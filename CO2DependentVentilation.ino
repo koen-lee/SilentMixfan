@@ -5,12 +5,18 @@
    The fan can be mounted without drills using 10mm thick foam in the hole.
  */
 
-const int fanPwmPin = 9; // pwm output controlled by OCR1A 
+ 
+const int fanPwmPin = 9;  // pwm output controlled by OCR1A 
 const int sensorPwm = 10; // PWM input from CO2 sensor
+const int ledPin = 13;    // diagnostics:
+ /// 1 second period blink = OK, duty cycle corresponds with CO2 concentration and fan speed
+ /// 1 second on, 1 second off = no signal from sensor
+ /// not on = program not running/crashed
 
 void setup() {
     Serial.begin(9600);
     pinMode(fanPwmPin, OUTPUT);
+    pinMode(ledPin, OUTPUT);
     pinMode(sensorPwm, INPUT);  
     setupNoctuaPwm();
 }
@@ -37,9 +43,12 @@ void writeData(float co2_ppm, float fanSpeed) {
 }
 
 void loop() {
+    digitalWrite(ledPin, HIGH);
     unsigned long highTime = pulseIn(10, HIGH, 1100000); // Timeout ~1.1s
+    digitalWrite(ledPin, LOW);
     unsigned long lowTime = pulseIn(10, LOW, 1100000);
     
+    digitalWrite(ledPin, HIGH);
     // Calculate CO2
     // sps-siot-carbon-dioxide-crir-e1-sensor-user-guide-000841-ciid-179501.pdf page 5
     // C(CO2) = 2000 × (TH-2) / (TH+TL-4)
@@ -49,5 +58,6 @@ void loop() {
     float fanSpeed = constrain(map(co2_ppm, 400, 2000, 10, 100), 10, 100);
   
     writeData(co2_ppm, fanSpeed);
+    digitalWrite(ledPin, LOW);
     delay(9000); // Including the high/low times results in 10 sec updates
 }
