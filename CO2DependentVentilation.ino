@@ -4,10 +4,10 @@
    My wall is 10 cm thick; a 168mm core drill makes a nice round hole for the fan while allowing standard exhaust grills.
    The fan can be mounted without drills using 10mm thick foam in the hole.
  */
-
  
 const int fanPwmPin = 9;  // pwm output controlled by OCR1A 
 const int sensorPwm = 10; // PWM input from CO2 sensor
+const int fanRpm = 3;     // RPM input from fan, 2 pulses/rev
 const int ledPin = 13;    // diagnostics:
  /// 1 second period blink = OK, duty cycle corresponds with CO2 concentration and fan speed
  /// 1 second on, 1 second off = no signal from sensor
@@ -18,6 +18,7 @@ void setup() {
     pinMode(fanPwmPin, OUTPUT);
     pinMode(ledPin, OUTPUT);
     pinMode(sensorPwm, INPUT);  
+    pinMode(fanRpm, INPUT);  
     setupNoctuaPwm();
 }
 
@@ -42,22 +43,91 @@ void writeData(float co2_ppm, float fanSpeed) {
     Serial.println(" }");
 }
 
-void loop() {
-    digitalWrite(ledPin, HIGH);
-    unsigned long highTime = pulseIn(10, HIGH, 1100000); // Timeout ~1.1s
-    digitalWrite(ledPin, LOW);
-    unsigned long lowTime = pulseIn(10, LOW, 1100000);
-    
-    digitalWrite(ledPin, HIGH);
-    // Calculate CO2
-    // sps-siot-carbon-dioxide-crir-e1-sensor-user-guide-000841-ciid-179501.pdf page 5
-    // C(CO2) = 2000 × (TH-2) / (TH+TL-4)
-    float co2_ppm = 2000.0 * (highTime/1000.0 - 2) / ((highTime + lowTime)/1000.0 - 4);
-    
-    // Map CO2 to fan speed (400ppm or lower = 10%, 1000ppm = 55%, 2000ppm or higher = 100%)
-    float fanSpeed = constrain(map(co2_ppm, 400, 2000, 10, 100), 10, 100);
+void writeDebug(long timeHigh, long timeLow) {
+    Serial.print("{ high: ");
+    Serial.print(timeHigh, 1);
+    Serial.print(", low: ");
+    Serial.print(timeLow);
+    Serial.println(" }");
+}
+
+bool waitForState(int pin, bool targetState, unsigned long timeoutUs) {
+  unsigned long start = micros();
+  while(digitalRead(pin) != targetState) {
+    if (micros() - start > timeoutUs) return false;
+  }
+  return true;
+}
+
+bool measurePulse(int pin, unsigned long* highTime, unsigned long* lowTime, unsigned long timeoutUs) {
+  // Wait for initial state (with timeout)
+  if (!waitForState(pin, LOW, timeoutUs)) {
+    return false;
+  }
   
-    writeData(co2_ppm, fanSpeed);
-    digitalWrite(ledPin, LOW);
-    delay(9000); // Including the high/low times results in 10 sec updates
+  digitalWrite(ledPin, LOW);
+  if (!waitForState(pin, HIGH, timeoutUs)) {
+    return false;
+  }
+  unsigned long startHigh = micros();
+  digitalWrite(ledPin, HIGH);
+  if (!waitForState(pin, LOW, timeoutUs)) {
+    return false;
+  }
+  digitalWrite(ledPin, LOW);
+  unsigned long startLow = micros();
+  if (!waitForState(pin, HIGH, timeoutUs)) {
+    return false;
+  }
+  unsigned long endLow = micros();
+  
+  *highTime = startLow - startHigh;
+  *lowTime = endLow - startLow;
+  
+  return true;
+}
+
+long calculateCO2(unsigned long highTimeUs, unsigned long lowTimeUs) {
+  // Convert microseconds to milliseconds
+  long thMs = highTimeUs / 1000;
+  long tlMs = lowTimeUs / 1000;
+  
+  // CO2 = 2000 * (thMs - 2) / (thMs + tlMs - 4)
+  long co2_ppm = (2000L * (thMs - 2)) / (thMs + tlMs - 4);
+  
+  return co2_ppm;
+}
+
+void loop() {
+  const unsigned long timeOutUs = 2000000UL;
+  unsigned long highTime, lowTime;
+  if (measurePulse(sensorPwm, &highTime, &lowTime, timeOutUs)) {
+      long co2_ppm = calculateCO2(highTime, lowTime);
+       
+      // Map CO2 to fan speed (400ppm or lower = 10%, 1000ppm = 55%, 2000ppm or higher = 100%)
+      float fanSpeed = constrain(map(co2_ppm, 400, 2000, 10, 100), 10, 100);
+    
+      writeData(co2_ppm, fanSpeed);
+      setFanSpeed(fanSpeed);
+  } 
+  else
+  {
+      writeDebug(highTime, lowTime);
+      Serial.print("{ error: \"Sensor timeout\" }\n");
+      setFanSpeed(50.0);
+     // blink(5);
+  }
+  if( measurePulse(fanRpm, &highTime, &lowTime, timeOutUs) )
+  {
+      unsigned long timePerRevUs = 2*(lowTime + highTime);
+      const unsigned long usPerMinute = (60 * 1000 * 1000 ); 
+      unsigned int rpm = usPerMinute / timePerRevUs;
+      Serial.print("{ rpm: ");
+      Serial.print(rpm);
+      Serial.print(" }\n");
+  } else {
+      Serial.print("{ error: \"Fan blocked\" }\n");
+     // blink(3);
+  }
+  
 }
