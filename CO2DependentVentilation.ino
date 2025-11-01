@@ -17,7 +17,7 @@ void setup() {
     Serial.begin(9600);
     pinMode(fanPwmPin, OUTPUT);
     pinMode(ledPin, OUTPUT);
-    pinMode(sensorPwm, INPUT);  
+    pinMode(sensorPwm, INPUT_PULLUP);  
     pinMode(fanRpm, INPUT);  
     setupNoctuaPwm();
 }
@@ -130,12 +130,13 @@ void loop() {
   }
   if( measurePulse(fanRpm, &highTime, &lowTime, timeOutUs) )
   {
-      unsigned long timePerRevUs = 2*(lowTime + highTime);
-      const unsigned long usPerMinute = (60 * 1000 * 1000 ); 
-      unsigned int rpm = usPerMinute / timePerRevUs;
+      unsigned long timePerRevUs = 2UL*(lowTime + highTime);
+      unsigned long usPerMinute = (60UL * 1000UL * 1000UL ); 
+      unsigned long rpm = usPerMinute / timePerRevUs;
       Serial.print("{ rpm: ");
       Serial.print(rpm);
       Serial.print(" }\n");
+      
   } else {
       Serial.print("{ error: \"Fan blocked\" }\n");
       blink(3);
