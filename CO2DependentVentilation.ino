@@ -98,6 +98,17 @@ long calculateCO2(unsigned long highTimeUs, unsigned long lowTimeUs) {
   return co2_ppm;
 }
 
+void blink(int times) {
+  digitalWrite(ledPin, LOW);
+  for( int i = 0; i < times; i++){
+    delay(100);
+    digitalWrite(ledPin, HIGH);
+    delay(100);
+    digitalWrite(ledPin, LOW);
+  }
+  delay(100);
+}
+
 void loop() {
   const unsigned long timeOutUs = 2000000UL;
   unsigned long highTime, lowTime;
@@ -115,7 +126,7 @@ void loop() {
       writeDebug(highTime, lowTime);
       Serial.print("{ error: \"Sensor timeout\" }\n");
       setFanSpeed(50.0);
-     // blink(5);
+      blink(5);
   }
   if( measurePulse(fanRpm, &highTime, &lowTime, timeOutUs) )
   {
@@ -127,7 +138,7 @@ void loop() {
       Serial.print(" }\n");
   } else {
       Serial.print("{ error: \"Fan blocked\" }\n");
-     // blink(3);
+      blink(3);
   }
   
 }
