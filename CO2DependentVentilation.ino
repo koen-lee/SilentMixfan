@@ -10,8 +10,10 @@ const int sensorPwm = 10; // PWM input from CO2 sensor
 const int fanRpm = 3;     // RPM input from fan, 2 pulses/rev
 const int ledPin = 13;    // diagnostics:
  /// 1 second period blink = OK, duty cycle corresponds with CO2 concentration and fan speed
- /// 1 second on, 1 second off = no signal from sensor
+ /// 5 blinks = no signal from sensor
+ /// 3 blinks = no signal from fan
  /// not on = program not running/crashed
+ 
 
 void setup() {
     Serial.begin(9600);
@@ -20,6 +22,7 @@ void setup() {
     pinMode(sensorPwm, INPUT_PULLUP);  
     pinMode(fanRpm, INPUT);  
     setupNoctuaPwm();
+    Serial.print("{ info: \"https://github.com/koen-lee/SilentMixfan\" }");
 }
 
 void setupNoctuaPwm() {
@@ -40,14 +43,6 @@ void writeData(float co2_ppm, float fanSpeed) {
     Serial.print(co2_ppm, 1);
     Serial.print(", fanPwm: ");
     Serial.print(fanSpeed);
-    Serial.println(" }");
-}
-
-void writeDebug(long timeHigh, long timeLow) {
-    Serial.print("{ high: ");
-    Serial.print(timeHigh, 1);
-    Serial.print(", low: ");
-    Serial.print(timeLow);
     Serial.println(" }");
 }
 
@@ -91,10 +86,11 @@ long calculateCO2(unsigned long highTimeUs, unsigned long lowTimeUs) {
   // Convert microseconds to milliseconds
   long thMs = highTimeUs / 1000;
   long tlMs = lowTimeUs / 1000;
+
+// sps-siot-carbon-dioxide-crir-e1-sensor-user-guide-000841-ciid-179501.pdf page 5
+// CO2 = 2000 * (thMs - 2) / (thMs + tlMs - 4)   
   
-  // CO2 = 2000 * (thMs - 2) / (thMs + tlMs - 4)
   long co2_ppm = (2000L * (thMs - 2)) / (thMs + tlMs - 4);
-  
   return co2_ppm;
 }
 
