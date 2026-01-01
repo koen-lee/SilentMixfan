@@ -19,6 +19,10 @@ const int BUFFER_SIZE = 8;
 long co2Readings[BUFFER_SIZE];
 int readingIndex = 0;
 bool bufferFilled = false;
+
+// Error tracking
+int consecutiveErrors = 0;
+const int MAX_ERRORS_BEFORE_FALLBACK = 5;
  
 
 void setup() {
@@ -152,6 +156,8 @@ void loop() {
   const unsigned long timeOutUs = 2000000UL;
   unsigned long highTime, lowTime;
   if (measurePulse(sensorPwm, &highTime, &lowTime, timeOutUs)) {
+      consecutiveErrors = 0;  // Reset error counter on successful read
+
       long co2_ppm = calculateCO2(highTime, lowTime);
 
       long medianCO2 = getControlReading(co2_ppm);
@@ -164,10 +170,16 @@ void loop() {
   }
   else
   {
+      consecutiveErrors++;
       writeDebug(highTime, lowTime);
-      Serial.print("{ error: \"Sensor timeout\" }\n");
-      setFanSpeed(50.0);
-      blink(5);
+      Serial.print("{ error: \"Sensor timeout\", consecutiveErrors: ");
+      Serial.print(consecutiveErrors);
+      Serial.print(" }\n");
+
+      if (consecutiveErrors >= MAX_ERRORS_BEFORE_FALLBACK) {
+        setFanSpeed(50.0);
+        blink(5);
+      }
   }
   if( measurePulse(fanRpm, &highTime, &lowTime, timeOutUs) )
   {
