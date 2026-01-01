@@ -204,7 +204,6 @@ void loop() {
     setFanSpeed(fanSpeed);
   } else {
     consecutiveErrors++;
-    writeDebug(highTime, lowTime);
     Serial.print("{ error: \"Sensor timeout\", consecutiveErrors: ");
     Serial.print(consecutiveErrors);
     Serial.print(" }\n");
