@@ -5,7 +5,7 @@
    The fan can be mounted without drills using 10mm thick foam in the hole.
  */
  
-const int fanPwmPin = 9;  // pwm output controlled by OCR1A 
+const int fanPwmPin = 9;  // pwm output controlled by OCR1A
 const int sensorPwm = 10; // PWM input from CO2 sensor
 const int fanRpm = 3;     // RPM input from fan, 2 pulses/rev
 const int ledPin = 13;    // diagnostics:
@@ -13,6 +13,12 @@ const int ledPin = 13;    // diagnostics:
  /// 5 blinks = no signal from sensor
  /// 3 blinks = no signal from fan
  /// not on = program not running/crashed
+
+// Circular buffer for CO2 readings
+const int BUFFER_SIZE = 8;
+long co2Readings[BUFFER_SIZE];
+int readingIndex = 0;
+bool bufferFilled = false;
  
 
 void setup() {
@@ -105,18 +111,57 @@ void blink(int times) {
   delay(100);
 }
 
+long getControlReading(long newReading) {
+  co2Readings[readingIndex] = newReading;
+  readingIndex++;
+  if (readingIndex >= BUFFER_SIZE) {
+    readingIndex = 0;
+    bufferFilled = true;
+  }
+  return calculateMedian();
+}
+
+long calculateMedian() {
+  long sortedReadings[BUFFER_SIZE];
+  int validCount = bufferFilled ? BUFFER_SIZE : readingIndex;
+
+  for (int i = 0; i < validCount; i++) {
+    sortedReadings[i] = co2Readings[i];
+  }
+
+  // Simple bubble sort
+  for (int i = 0; i < validCount - 1; i++) {
+    for (int j = 0; j < validCount - i - 1; j++) {
+      if (sortedReadings[j] > sortedReadings[j + 1]) {
+        long temp = sortedReadings[j];
+        sortedReadings[j] = sortedReadings[j + 1];
+        sortedReadings[j + 1] = temp;
+      }
+    }
+  }
+
+  // Return median
+  if (validCount % 2 == 0) {
+    return (sortedReadings[validCount / 2 - 1] + sortedReadings[validCount / 2]) / 2;
+  } else {
+    return sortedReadings[validCount / 2];
+  }
+}
+
 void loop() {
   const unsigned long timeOutUs = 2000000UL;
   unsigned long highTime, lowTime;
   if (measurePulse(sensorPwm, &highTime, &lowTime, timeOutUs)) {
       long co2_ppm = calculateCO2(highTime, lowTime);
-       
-      // Map CO2 to fan speed (400ppm or lower = 10%, 1000ppm = 55%, 2000ppm or higher = 100%)
-      float fanSpeed = constrain(map(co2_ppm, 400, 2000, 10, 100), 10, 100);
-    
-      writeData(co2_ppm, fanSpeed);
+
+      long medianCO2 = getControlReading(co2_ppm);
+
+      // Map median CO2 to fan speed (400ppm or lower = 10%, 1000ppm = 55%, 2000ppm or higher = 100%)
+      float fanSpeed = constrain(map(medianCO2, 400, 2000, 10, 100), 10, 100);
+
+      writeData(medianCO2, fanSpeed);
       setFanSpeed(fanSpeed);
-  } 
+  }
   else
   {
       writeDebug(highTime, lowTime);
