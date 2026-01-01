@@ -45,6 +45,35 @@ void setup() {
   Serial.print("{ info: \"https://github.com/koen-lee/SilentMixfan\" }");
 }
 
+void loop() {
+  const unsigned long timeOutUs = 2000000UL;
+  unsigned long highTime, lowTime;
+  if (measurePulse(sensorPwm, &highTime, &lowTime, timeOutUs)) {
+    consecutiveErrors = 0; // Reset error counter on successful read
+
+    long co2_ppm = calculateCO2(highTime, lowTime);
+
+    long medianCO2 = getControlReading(co2_ppm);
+
+    // Use PI controller to calculate fan speed
+    float fanSpeed = calculatePIControl(medianCO2);
+
+    writeData(co2_ppm, fanSpeed);
+    setFanSpeed(fanSpeed);
+  } else {
+    consecutiveErrors++;
+    Serial.print("{ error: \"Sensor timeout\", consecutiveErrors: ");
+    Serial.print(consecutiveErrors);
+    Serial.print(" }\n");
+
+    if (consecutiveErrors >= MAX_ERRORS_BEFORE_FALLBACK) {
+      setFanSpeed(50.0);
+      blink(5);
+    }
+  }
+  logFanRpm(highTime, lowTime, timeOutUs);
+}
+
 void setupNoctuaPwm() {
   // Set Timer1 to Fast PWM mode with ICR1 as TOP
   TCCR1A = _BV(COM1A1) | _BV(WGM11);            // Non-inverting mode, Fast PWM
@@ -187,32 +216,9 @@ float calculatePIControl(float measuredValue) {
   return fanSpeed;
 }
 
-void loop() {
-  const unsigned long timeOutUs = 2000000UL;
-  unsigned long highTime, lowTime;
-  if (measurePulse(sensorPwm, &highTime, &lowTime, timeOutUs)) {
-    consecutiveErrors = 0; // Reset error counter on successful read
+void logFanRpm(unsigned long &highTime, unsigned long &lowTime,
+               const unsigned long timeOutUs) {
 
-    long co2_ppm = calculateCO2(highTime, lowTime);
-
-    long medianCO2 = getControlReading(co2_ppm);
-
-    // Use PI controller to calculate fan speed
-    float fanSpeed = calculatePIControl(medianCO2);
-
-    writeData(medianCO2, fanSpeed);
-    setFanSpeed(fanSpeed);
-  } else {
-    consecutiveErrors++;
-    Serial.print("{ error: \"Sensor timeout\", consecutiveErrors: ");
-    Serial.print(consecutiveErrors);
-    Serial.print(" }\n");
-
-    if (consecutiveErrors >= MAX_ERRORS_BEFORE_FALLBACK) {
-      setFanSpeed(50.0);
-      blink(5);
-    }
-  }
   if (measurePulse(fanRpm, &highTime, &lowTime, timeOutUs)) {
     unsigned long timePerRevUs = 2UL * (lowTime + highTime);
     unsigned long usPerMinute = (60UL * 1000UL * 1000UL);
