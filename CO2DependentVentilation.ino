@@ -23,6 +23,14 @@ bool bufferFilled = false;
 // Error tracking
 int consecutiveErrors = 0;
 const int MAX_ERRORS_BEFORE_FALLBACK = 5;
+
+// PI controller parameters
+const float SETPOINT = 800.0;  // Target CO2 level in ppm
+const float KP = 0.05;          // Proportional gain (slow response)
+const float KI = 0.002;         // Integral gain (slow response)
+float integral = 0.0;           // Integral accumulator
+const float MIN_FAN_SPEED = 10.0;
+const float MAX_FAN_SPEED = 100.0;
  
 
 void setup() {
@@ -152,6 +160,27 @@ long calculateMedian() {
   }
 }
 
+float calculatePIControl(float measuredValue) {
+  // Calculate error (positive error means CO2 is above setpoint)
+  float error = measuredValue - SETPOINT;
+
+  // Update integral term
+  integral += error;
+
+  // Anti-windup: constrain integral to prevent excessive accumulation
+  float maxIntegral = (MAX_FAN_SPEED - MIN_FAN_SPEED) / KI;
+  integral = constrain(integral, -maxIntegral, maxIntegral);
+
+  // Calculate PI output
+  float output = KP * error + KI * integral;
+
+  // Add base speed and constrain to valid range
+  float fanSpeed = MIN_FAN_SPEED + output;
+  fanSpeed = constrain(fanSpeed, MIN_FAN_SPEED, MAX_FAN_SPEED);
+
+  return fanSpeed;
+}
+
 void loop() {
   const unsigned long timeOutUs = 2000000UL;
   unsigned long highTime, lowTime;
@@ -162,8 +191,8 @@ void loop() {
 
       long medianCO2 = getControlReading(co2_ppm);
 
-      // Map median CO2 to fan speed (400ppm or lower = 10%, 1000ppm = 55%, 2000ppm or higher = 100%)
-      float fanSpeed = constrain(map(medianCO2, 400, 2000, 10, 100), 10, 100);
+      // Use PI controller to calculate fan speed
+      float fanSpeed = calculatePIControl(medianCO2);
 
       writeData(medianCO2, fanSpeed);
       setFanSpeed(fanSpeed);
